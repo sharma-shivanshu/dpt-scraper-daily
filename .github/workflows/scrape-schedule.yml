@@ -29,29 +29,28 @@ jobs:
           echo "$GSPREAD_CREDENTIALS_B64" | base64 -d > credentials.json
           echo "$COOKIES_JSON_B64" | base64 -d > cookies.json
         shell: bash
-        env:
-          GSPREAD_CREDENTIALS_B64: ${{ secrets.GSPREAD_CREDENTIALS_B64 }}
-          COOKIES_JSON_B64: ${{ secrets.COOKIES_JSON_B64 }}
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install apt deps (chromium + driver)
+      - name: Install apt deps (Chromium + libs)
         run: |
           sudo apt-get update
-          sudo apt-get install -y chromium-browser chromium-chromedriver || true
-          sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxss1 libasound2t64 libx11-xcb1 libgtk-3-0 || true
+          sudo apt-get install -y chromium-browser chromium-chromedriver \
+            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+            libxss1 libasound2t64 libx11-xcb1 libgtk-3-0 libffi8 \
+            libx264-dev || true
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright browsers
+      - name: Install Playwright (Chromium only)
         run: |
-          python -m playwright install --with-deps
+          python -m playwright install chromium
 
       - name: Run scraper
         id: run_scraper
@@ -85,7 +84,6 @@ jobs:
           password: ${{ env.SMTP_PASSWORD }}
           to: ${{ env.NOTIFY_TO }}
           from: ${{ env.SMTP_USERNAME }}
-          
           body: |
             Scraper run completed. Summary:
             ${{ steps.get_summary.outputs.summary }}
