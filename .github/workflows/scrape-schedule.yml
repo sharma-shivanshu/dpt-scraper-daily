@@ -15,6 +15,11 @@ jobs:
       COOKIES_JSON_B64: ${{ secrets.COOKIES_JSON_B64 }}
       SHEET_KEY: ${{ secrets.SHEET_KEY }}
       SCRAPE_ACCOUNT: bstvlive
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      NOTIFY_TO: ${{ secrets.NOTIFY_TO }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -72,13 +77,14 @@ jobs:
       - name: Send email with summary
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: ${{ secrets.SMTP_HOST }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
           subject: "Scraper report — run ${{ github.run_number }}"
-          to: ${{ secrets.NOTIFY_TO }}
-          from: ${{ secrets.SMTP_USERNAME }}
+          server_address: ${{ env.SMTP_HOST }}
+          server_port: ${{ env.SMTP_PORT }}
+          username: ${{ env.SMTP_USERNAME }}
+          password: ${{ env.SMTP_PASSWORD }}
+          to: ${{ env.NOTIFY_TO }}
+          from: ${{ env.SMTP_USERNAME }}
+          
           body: |
             Scraper run completed. Summary:
             ${{ steps.get_summary.outputs.summary }}
