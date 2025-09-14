@@ -19,6 +19,15 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Restore credentials.json
+        run: |
+          echo "$GSPREAD_CREDENTIALS_B64" | base64 -d > credentials.json
+          echo "$COOKIES_JSON_B64" | base64 -d > cookies.json
+        shell: bash
+        env:
+          GSPREAD_CREDENTIALS_B64: ${{ secrets.GSPREAD_CREDENTIALS_B64 }}
+          COOKIES_JSON_B64: ${{ secrets.COOKIES_JSON_B64 }}
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
