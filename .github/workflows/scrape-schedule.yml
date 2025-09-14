@@ -15,11 +15,7 @@ jobs:
       COOKIES_JSON_B64: ${{ secrets.COOKIES_JSON_B64 }}
       SHEET_KEY: ${{ secrets.SHEET_KEY }}
       SCRAPE_ACCOUNT: bstvlive
-      SMTP_HOST: ${{ secrets.SMTP_HOST }}
-      SMTP_PORT: ${{ secrets.SMTP_PORT }}
-      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-      NOTIFY_TO: ${{ secrets.NOTIFY_TO }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -28,7 +24,6 @@ jobs:
         run: |
           echo "$GSPREAD_CREDENTIALS_B64" | base64 -d > credentials.json
           echo "$COOKIES_JSON_B64" | base64 -d > cookies.json
-        shell: bash
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -53,7 +48,6 @@ jobs:
           python -m playwright install chromium
 
       - name: Run scraper
-        id: run_scraper
         run: |
           python run.py
           if [ ! -f summary.txt ]; then
@@ -66,24 +60,3 @@ jobs:
         with:
           name: summary
           path: summary.txt
-
-      - name: Read summary for email
-        id: get_summary
-        run: |
-          echo "summary<<EOF" >> $GITHUB_OUTPUT
-          cat summary.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Send email with summary
-        uses: dawidd6/action-send-mail@v3
-        with:
-          subject: "Scraper report — run ${{ github.run_number }}"
-          server_address: ${{ env.SMTP_HOST }}
-          server_port: ${{ env.SMTP_PORT }}
-          username: ${{ env.SMTP_USERNAME }}
-          password: ${{ env.SMTP_PASSWORD }}
-          to: ${{ env.NOTIFY_TO }}
-          from: ${{ env.SMTP_USERNAME }}
-          body: |
-            Scraper run completed. Summary:
-            ${{ steps.get_summary.outputs.summary }}
