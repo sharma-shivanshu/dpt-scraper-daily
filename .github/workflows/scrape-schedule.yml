@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: '30 7 * * *'   # 07:30 UTC -> 13:00 IST
     - cron: '30 10 * * *'  # 10:30 UTC -> 16:00 IST
-    - cron: '50 12 * * *'  # 12:50 UTC -> 18:20 IST
+    - cron: '30 12 * * *'  # 12:30 UTC -> 18:00 IST
 
 jobs:
   scrape:
