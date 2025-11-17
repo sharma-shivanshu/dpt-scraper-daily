@@ -99,7 +99,7 @@ def scrape_and_save_links(
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    driver = webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=options)
+    driver = webdriver.Chrome(options=options)
 
     # open domain to allow adding cookies
     driver.get("https://x.com")
