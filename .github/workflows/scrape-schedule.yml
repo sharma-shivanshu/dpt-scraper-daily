@@ -3,6 +3,7 @@ name: Scheduled Scraper
 on:
   workflow_dispatch: {}
   schedule:
+    - cron: '30 4 * * *'   # 04:30 UTC -> 10:00 IST
     - cron: '30 5 * * *'   # 05:30 UTC -> 11:00 IST
     - cron: '40 6 * * *'  # 06:40 UTC -> 12:10 IST
     - cron: '50 7 * * *'  # 7:50 UTC -> 13:20 IST
@@ -10,6 +11,7 @@ on:
     - cron: '50 9 * * *'  # 9:50 UTC -> 15:20 IST
     - cron: '40 10 * * *'  # 10:40 UTC -> 16:10 IST
     - cron: '30 11 * * *'  # 11:30 UTC -> 17:00 IST
+    - cron: '30 12 * * *'  # 12:30 UTC -> 18:00 IST
 
 jobs:
   scrape:
