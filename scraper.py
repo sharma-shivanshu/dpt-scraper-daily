@@ -12,6 +12,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from newspaper import Article
 from playwright.async_api import async_playwright
 import asyncio
@@ -50,6 +52,8 @@ def ensure_headers_for_ws(worksheet):
 def scroll_and_collect_links(driver, max_scrolls=80, pause_time=2):
     seen_links = set()
     last_height = driver.execute_script("return document.body.scrollHeight")
+    retries = 0
+
     for _ in range(max_scrolls):
         driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
         time.sleep(pause_time)
@@ -67,8 +71,12 @@ def scroll_and_collect_links(driver, max_scrolls=80, pause_time=2):
 
         new_height = driver.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
-            break
-        last_height = new_height
+            retries += 1
+            if retries >= 3: # Give it a few chances before breaking
+                break
+        else:
+            retries = 0
+            last_height = new_height
 
     return list(seen_links)
 
@@ -129,7 +137,14 @@ def scrape_and_save_links(
 
     search_url = f"https://x.com/search?q=(from:{account})%20until:{dates}%20since:{date}&f=live"
     driver.get(search_url)
-    time.sleep(4)
+    
+    # Wait up to 15 seconds for at least one tweet to load
+    try:
+        WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/status/']"))
+        )
+    except Exception:
+        print("⚠️ Timeout: No tweets loaded. The page might be empty, rate-limited, or cookies are expired.")
 
     all_links = scroll_and_collect_links(driver, max_scrolls=max_scrolls, pause_time=pause_time)
     driver.quit()
@@ -171,10 +186,32 @@ async def scrape_tweet_playwright(url, timeout=60000):
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+            context = await browser.new_context()
+            
+            # Load cookies into Playwright
+            try:
+                with open("cookies.json", "r") as f:
+                    cookies_data = json.load(f)
+                    cookies_list = cookies_data.get("cookies", cookies_data) if isinstance(cookies_data, dict) else cookies_data
+                    
+                    pw_cookies = []
+                    for c in cookies_list:
+                        pw_cookies.append({
+                            "name": c.get("name"),
+                            "value": c.get("value"),
+                            "domain": c.get("domain", ".x.com"),
+                            "path": c.get("path", "/")
+                        })
+                    await context.add_cookies(pw_cookies)
+            except Exception as e:
+                print(f"⚠️ Could not load cookies for Playwright: {e}")
+
+            page = await context.new_page()
             try:
                 await page.goto(url, timeout=timeout)
+                # Wait for the article element specifically
                 try:
+                    await page.wait_for_selector("article", timeout=10000)
                     content = await page.locator("article").inner_text(timeout=timeout)
                 except:
                     content = await page.content()
