@@ -212,19 +212,23 @@ async def scrape_tweet_playwright(url, timeout=60000):
             page = await context.new_page()
             try:
                 await page.goto(url, timeout=timeout)
+                
+                # Attempt 1: Look directly for the actual tweet text container (Cleanest data)
                 try:
-                    await page.wait_for_selector("article", timeout=10000)
-                    content = await page.locator("article").inner_text(timeout=timeout)
+                    await page.wait_for_selector('[data-testid="tweetText"]', timeout=20000)
+                    content = await page.locator('[data-testid="tweetText"]').first.inner_text()
+                
+                # Attempt 2: Fallback to the main article container if it's a media-only tweet
                 except Exception:
-                    content = await page.content()
-                    content = re.sub(r"<.*?>", " ", content)
-                return content.strip()
+                    await page.wait_for_selector("article", timeout=10000)
+                    content = await page.locator("article").first.inner_text()
+                    
+                return content.strip() if content else None
             finally:
                 await browser.close()
     except Exception as e:
         print(f"⚠️ Playwright scrape failed for {url}: {e}")
         return None
-
 
 def fetch_from_web_newspaper(url):
     try:
