@@ -38,15 +38,14 @@ def ensure_headers_for_ws(worksheet):
     required_headers = ["Link", "Raw", "Relevance", "Cleaned", "Refined", "RunTime"]
     current_headers = worksheet.row_values(1)
     if current_headers != required_headers:
-        # delete header row if present and reset
         if current_headers:
             try:
                 worksheet.delete_rows(1)
             except Exception:
                 pass
         worksheet.insert_row(required_headers, 1)
-        return False  # headers were reset
-    return True  # headers already correct
+        return False
+    return True
 
 
 def scroll_and_collect_links(driver, max_scrolls=80, pause_time=2):
@@ -72,7 +71,7 @@ def scroll_and_collect_links(driver, max_scrolls=80, pause_time=2):
         new_height = driver.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
             retries += 1
-            if retries >= 3: # Give it a few chances before breaking
+            if retries >= 3:
                 break
         else:
             retries = 0
@@ -91,29 +90,30 @@ def scrape_and_save_links(
     pause_time=2,
     batch_size=50
 ):
-    """Scrapes links from X using Selenium and updates worksheet.
-       Returns a dict summary: headers_ok (bool), unique_found (int), new_added (int), tab.
-    """
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
     if dates is None:
         dates = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # Ensure headers
     headers_ok = ensure_headers_for_ws(worksheet)
 
-    # selenium driver setup (assumes chromedriver present at /usr/bin/chromedriver)
+    # Configure Chrome options to avoid headless bot detection
     options = webdriver.ChromeOptions()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+    
     driver = webdriver.Chrome(options=options)
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-    # open domain to allow adding cookies
+    # Open base domain
     driver.get("https://x.com")
-    time.sleep(2)
+    time.sleep(3)
 
-    # load cookies file
+    # Load and inject cookies
     with open(cookies_file, "r") as f:
         cookies_data = json.load(f)
     if isinstance(cookies_data, list):
@@ -136,24 +136,26 @@ def scrape_and_save_links(
             pass
 
     search_url = f"https://x.com/search?q=(from:{account})%20until:{dates}%20since:{date}&f=live"
+    print(f"Navigating to: {search_url}")
     driver.get(search_url)
-    
-    # Wait up to 15 seconds for at least one tweet to load
+
+    # Wait for tweets with detailed diagnostics if it fails
     try:
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/status/']"))
         )
     except Exception:
-        print("⚠️ Timeout: No tweets loaded. The page might be empty, rate-limited, or cookies are expired.")
+        print(f"⚠️ Page landing URL: {driver.current_url}")
+        print(f"⚠️ Page title: {driver.title}")
+        driver.save_screenshot("debug_screenshot.png")
+        print("⚠️ Screenshot saved as 'debug_screenshot.png'. Check GitHub Action artifacts if needed.")
 
     all_links = scroll_and_collect_links(driver, max_scrolls=max_scrolls, pause_time=pause_time)
     driver.quit()
 
-    # write to sheet: compare existing links
     existing_links = set(worksheet.col_values(1)[1:]) if worksheet.row_values(1) else set()
     new_links = [link for link in all_links if link not in existing_links]
 
-    # add rows (Link, Raw, Relevance, Cleaned, Refined, RunTime)
     ist_now = datetime.now(tz=IST)
     ist_time_str = ist_now.strftime("%I:%M %p · %d %b, %Y")
     rows_to_add = [[link, "", "", "", "", ist_time_str] for link in new_links]
@@ -164,13 +166,13 @@ def scrape_and_save_links(
         if worksheet.row_count < required_rows:
             worksheet.add_rows(required_rows - worksheet.row_count)
 
-        # batch update
         for i in range(0, len(rows_to_add), batch_size):
             batch = rows_to_add[i:i+batch_size]
             batch_start = start_row + i
             batch_end = batch_start + len(batch) - 1
             cell_range = f"A{batch_start}:F{batch_end}"
             worksheet.update(cell_range, batch)
+
     return {
         "headers_ok": headers_ok,
         "unique_found": len(all_links),
@@ -186,9 +188,10 @@ async def scrape_tweet_playwright(url, timeout=60000):
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context()
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            )
             
-            # Load cookies into Playwright
             try:
                 with open("cookies.json", "r") as f:
                     cookies_data = json.load(f)
@@ -209,11 +212,10 @@ async def scrape_tweet_playwright(url, timeout=60000):
             page = await context.new_page()
             try:
                 await page.goto(url, timeout=timeout)
-                # Wait for the article element specifically
                 try:
                     await page.wait_for_selector("article", timeout=10000)
                     content = await page.locator("article").inner_text(timeout=timeout)
-                except:
+                except Exception:
                     content = await page.content()
                     content = re.sub(r"<.*?>", " ", content)
                 return content.strip()
@@ -248,16 +250,14 @@ async def fetch_raw_text(url):
 
 
 async def fetch_raw_rows_async(worksheet, max_raw_len=4500):
-    """Async function to fetch raw text for rows missing Raw. Returns number of updated cells."""
-    # ensure headers present
     headers = worksheet.row_values(1)
     if not headers:
         worksheet.insert_row(["Link","Raw","Relevance","Cleaned","Refined","RunTime"], 1)
         headers = worksheet.row_values(1)
     idx_map = {name: headers.index(name) + 1 for name in headers}
 
-    links = worksheet.col_values(idx_map["Link"])[1:]  # skip header
-    raw_col = worksheet.col_values(idx_map["Raw"])[1:] if idx_map["Raw"] else []
+    links = worksheet.col_values(idx_map["Link"])[1:]
+    raw_col = worksheet.col_values(idx_map["Raw"])[1:] if idx_map.get("Raw") else []
 
     updates = []
     for i, link in enumerate(links, start=2):
@@ -285,7 +285,6 @@ async def fetch_raw_rows_async(worksheet, max_raw_len=4500):
         await asyncio.sleep(2)
 
     if updates:
-        # gspread batch_update expects list of dicts with range and values
         try:
             worksheet.batch_update([{"range": u["range"], "values": u["values"]} for u in updates])
             return len(updates)
