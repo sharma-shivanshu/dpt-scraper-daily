@@ -184,51 +184,23 @@ def scrape_and_save_links(
 # ---------------------------
 # Playwright-based raw fetch
 # ---------------------------
-async def scrape_tweet_playwright(url, timeout=60000):
+async def scrape_tweet_with_page(page, url):
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            )
-            
-            try:
-                with open("cookies.json", "r") as f:
-                    cookies_data = json.load(f)
-                    cookies_list = cookies_data.get("cookies", cookies_data) if isinstance(cookies_data, dict) else cookies_data
-                    
-                    pw_cookies = []
-                    for c in cookies_list:
-                        pw_cookies.append({
-                            "name": c.get("name"),
-                            "value": c.get("value"),
-                            "domain": c.get("domain", ".x.com"),
-                            "path": c.get("path", "/")
-                        })
-                    await context.add_cookies(pw_cookies)
-            except Exception as e:
-                print(f"⚠️ Could not load cookies for Playwright: {e}")
-
-            page = await context.new_page()
-            try:
-                await page.goto(url, timeout=timeout)
-                
-                # Attempt 1: Look directly for the actual tweet text container (Cleanest data)
-                try:
-                    await page.wait_for_selector('[data-testid="tweetText"]', timeout=20000)
-                    content = await page.locator('[data-testid="tweetText"]').first.inner_text()
-                
-                # Attempt 2: Fallback to the main article container if it's a media-only tweet
-                except Exception:
-                    await page.wait_for_selector("article", timeout=10000)
-                    content = await page.locator("article").first.inner_text()
-                    
-                return content.strip() if content else None
-            finally:
-                await browser.close()
+        await page.goto(url, timeout=15000)
+        try:
+            # 5-second strict timeout for text
+            await page.wait_for_selector('[data-testid="tweetText"]', timeout=5000)
+            content = await page.locator('[data-testid="tweetText"]').first.inner_text()
+            return content.strip() if content else None
+        except Exception:
+            # 5-second fallback for media-only tweets
+            await page.wait_for_selector("article", timeout=5000)
+            content = await page.locator("article").first.inner_text()
+            return content.strip() if content else None
     except Exception as e:
-        print(f"⚠️ Playwright scrape failed for {url}: {e}")
+        print(f"⚠️ Scrape failed for {url}: {e}")
         return None
+
 
 def fetch_from_web_newspaper(url):
     try:
@@ -245,14 +217,6 @@ def is_x_link(url):
     return "x.com/" in url or "twitter.com/" in url
 
 
-async def fetch_raw_text(url):
-    if is_x_link(url):
-        text = await scrape_tweet_playwright(url)
-        if text:
-            return text
-    return fetch_from_web_newspaper(url)
-
-
 async def fetch_raw_rows_async(worksheet, max_raw_len=4500):
     headers = worksheet.row_values(1)
     if not headers:
@@ -264,29 +228,56 @@ async def fetch_raw_rows_async(worksheet, max_raw_len=4500):
     raw_col = worksheet.col_values(idx_map["Raw"])[1:] if idx_map.get("Raw") else []
 
     updates = []
-    for i, link in enumerate(links, start=2):
-        link = link.strip()
-        if not link:
-            continue
-
-        existing_raw = raw_col[i-2] if i-2 < len(raw_col) else ""
-        if existing_raw and existing_raw not in ["⚠️ fetch failed", ""]:
-            continue
-
+    
+    # Initialize Playwright ONCE for the entire batch
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
+        
+        # Inject cookies once
         try:
-            raw_text = await fetch_raw_text(link)
-            if not raw_text:
-                updates.append({"range": f"{gspread.utils.rowcol_to_a1(i, idx_map['Raw'])}", "values": [["⚠️ fetch failed"]]})
+            with open("cookies.json", "r") as f:
+                cookies_data = json.load(f)
+                cookies_list = cookies_data.get("cookies", cookies_data) if isinstance(cookies_data, dict) else cookies_data
+                pw_cookies = [{"name": c.get("name"), "value": c.get("value"), "domain": c.get("domain", ".x.com"), "path": c.get("path", "/")} for c in cookies_list]
+                await context.add_cookies(pw_cookies)
+        except Exception as e:
+            print(f"⚠️ Could not load cookies for Playwright: {e}")
+
+        page = await context.new_page()
+
+        for i, link in enumerate(links, start=2):
+            link = link.strip()
+            if not link:
                 continue
 
-            raw_snip = raw_text[:max_raw_len]
-            updates.append({"range": f"{gspread.utils.rowcol_to_a1(i, idx_map['Raw'])}", "values": [[raw_snip]]})
-            updates.append({"range": f"{gspread.utils.rowcol_to_a1(i, idx_map['RunTime'])}", "values": [[datetime.now().astimezone(IST).strftime("%I:%M %p · %d %b, %Y")]]})
+            existing_raw = raw_col[i-2] if i-2 < len(raw_col) else ""
+            if existing_raw and existing_raw not in ["⚠️ fetch failed", ""]:
+                continue
 
-        except Exception:
-            traceback.print_exc()
+            try:
+                if is_x_link(link):
+                    raw_text = await scrape_tweet_with_page(page, link)
+                else:
+                    raw_text = fetch_from_web_newspaper(link)
 
-        await asyncio.sleep(2)
+                if not raw_text:
+                    updates.append({"range": f"{gspread.utils.rowcol_to_a1(i, idx_map['Raw'])}", "values": [["⚠️ fetch failed"]]})
+                    continue
+
+                raw_snip = raw_text[:max_raw_len]
+                updates.append({"range": f"{gspread.utils.rowcol_to_a1(i, idx_map['Raw'])}", "values": [[raw_snip]]})
+                updates.append({"range": f"{gspread.utils.rowcol_to_a1(i, idx_map['RunTime'])}", "values": [[datetime.now().astimezone(IST).strftime("%I:%M %p · %d %b, %Y")]]})
+
+            except Exception:
+                traceback.print_exc()
+            
+            # Brief pause to avoid hammering the server
+            await asyncio.sleep(1)
+
+        await browser.close()
 
     if updates:
         try:
