@@ -1,11 +1,20 @@
 name: Scheduled Scraper
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      runner_type:
+        description: 'Choose where to run the scraper'
+        required: true
+        default: 'ubuntu-latest'
+        type: choice
+        options:
+          - ubuntu-latest
+          - self-hosted
 
 jobs:
   scrape:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner_type || 'ubuntu-latest' }}
     env:
       GSPREAD_CREDENTIALS_B64: ${{ secrets.GSPREAD_CREDENTIALS_B64 }}
       COOKIES_JSON_B64: ${{ secrets.COOKIES_JSON_B64 }}
