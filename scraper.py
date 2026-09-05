@@ -14,8 +14,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium_stealth import stealth
 from newspaper import Article
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 import asyncio
 
 IST = pytz.timezone("Asia/Kolkata")
@@ -104,10 +106,20 @@ def scrape_and_save_links(
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
     
     driver = webdriver.Chrome(options=options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    
+    # Apply Selenium Stealth patch
+    stealth(driver,
+        languages=["en-US", "en"],
+        vendor="Google Inc.",
+        platform="Win32",
+        webgl_vendor="Intel Inc.",
+        renderer="Intel Iris OpenGL Engine",
+        fix_hairline=True,
+    )
 
     # Open base domain
     driver.get("https://x.com")
@@ -247,6 +259,9 @@ async def fetch_raw_rows_async(worksheet, max_raw_len=4500):
             print(f"⚠️ Could not load cookies for Playwright: {e}")
 
         page = await context.new_page()
+        
+        # Apply Playwright Stealth patch
+        await stealth_async(page)
 
         for i, link in enumerate(links, start=2):
             link = link.strip()
