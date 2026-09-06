@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - windows-latest
+          - ubuntu-latest
           - self-hosted
 
 jobs:
@@ -25,10 +26,8 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Restore credentials.json
-        run: |
-          echo "$GSPREAD_CREDENTIALS_B64" | base64 -d > credentials.json
-          echo "$COOKIES_JSON_B64" | base64 -d > cookies.json
+      # The failing base64 bash step has been removed. 
+      # run.py handles the decoding natively in Python.
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -45,6 +44,7 @@ jobs:
           python -m playwright install chromium
 
       - name: Run scraper
+        shell: bash
         run: |
           python run.py
           if [ ! -f summary.txt ]; then
