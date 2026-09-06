@@ -6,7 +6,7 @@ on:
       runner_type:
         description: 'Choose where to run the scraper'
         required: true
-        default: 'ubuntu-latest'
+        default: 'windows-latest'
         type: choice
         options:
           - ubuntu-latest
