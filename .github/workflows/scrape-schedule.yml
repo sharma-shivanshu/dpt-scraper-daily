@@ -14,7 +14,7 @@ on:
 
 jobs:
   scrape:
-    runs-on: ${{ inputs.runner_type || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner_type || 'windows-latest' }}
     env:
       GSPREAD_CREDENTIALS_B64: ${{ secrets.GSPREAD_CREDENTIALS_B64 }}
       COOKIES_JSON_B64: ${{ secrets.COOKIES_JSON_B64 }}
