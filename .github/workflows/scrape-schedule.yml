@@ -21,13 +21,11 @@ jobs:
       COOKIES_JSON_B64: ${{ secrets.COOKIES_JSON_B64 }}
       SHEET_KEY: ${{ secrets.SHEET_KEY }}
       SCRAPE_ACCOUNT: bstvlive
+      PYTHONIOENCODING: 'utf-8'  # Forces Windows to support emojis
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-
-      # The failing base64 bash step has been removed. 
-      # run.py handles the decoding natively in Python.
 
       - name: Setup Python
         uses: actions/setup-python@v4
