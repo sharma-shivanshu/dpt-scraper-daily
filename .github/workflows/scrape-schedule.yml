@@ -9,7 +9,7 @@ on:
         default: 'windows-latest'
         type: choice
         options:
-          - ubuntu-latest
+          - windows-latest
           - self-hosted
 
 jobs:
