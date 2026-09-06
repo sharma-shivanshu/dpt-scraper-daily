@@ -6,16 +6,16 @@ on:
       runner_type:
         description: 'Choose where to run the scraper'
         required: true
-        default: 'windows-latest'
+        default: 'ubuntu-latest'
         type: choice
         options:
-          - windows-latest
           - ubuntu-latest
+          - windows-latest
           - self-hosted
 
 jobs:
   scrape:
-    runs-on: ${{ inputs.runner_type || 'windows-latest' }}
+    runs-on: ${{ inputs.runner_type || 'ubuntu-latest' }}
     env:
       GSPREAD_CREDENTIALS_B64: ${{ secrets.GSPREAD_CREDENTIALS_B64 }}
       COOKIES_JSON_B64: ${{ secrets.COOKIES_JSON_B64 }}
@@ -26,6 +26,12 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      - name: Set up Cloudflare WARP
+        uses: fscarmen/warp-on-actions@v1.4
+        if: runner.os == 'Linux'
+        with:
+          stack: dual
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -52,6 +58,9 @@ jobs:
 
       - name: Upload run summary (artifact)
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: summary
-          path: summary.txt
+          name: run-artifacts
+          path: |
+            summary.txt
+            debug_screenshot.png
