@@ -27,7 +27,18 @@ def open_sheet_and_worksheet(credentials_json_path: str, sheet_key: str):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_json_path, scope)
     gc = gspread.authorize(creds)
-    sh = gc.open_by_key(sheet_key)
+    
+    # Retry loop to handle Google 503 outages
+    for attempt in range(4):
+        try:
+            sh = gc.open_by_key(sheet_key)
+            break
+        except Exception as e:
+            if attempt == 3:
+                raise
+            print(f"⚠️ Google API error. Retrying in 10s... ({e})")
+            time.sleep(10)
+            
     today_tab = datetime.now().strftime("%Y-%m-%d")
     try:
         worksheet = sh.worksheet(today_tab)
